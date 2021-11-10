@@ -205,8 +205,10 @@ func (p *SQLProvider) schemaMigratePre1To1TOTP() (err error) {
 			return err
 		}
 
-		// TODO: Add encryption migration here.
-		encryptedSecret := "encrypted:" + secret
+		encryptedSecret, err := p.encrypt([]byte(secret))
+		if err != nil {
+			return err
+		}
 
 		totpConfigs = append(totpConfigs, models.TOTPConfiguration{Username: username, Secret: encryptedSecret})
 	}
@@ -398,18 +400,22 @@ func (p *SQLProvider) schemaMigrate1ToPre1TOTP() (err error) {
 	}()
 
 	for rows.Next() {
-		var username, encryptedSecret string
+		var (
+			username         string
+			secretCipherText []byte
+		)
 
-		err = rows.Scan(&username, &encryptedSecret)
+		err = rows.Scan(&username, &secretCipherText)
 		if err != nil {
 			return err
 		}
 
-		// TODO: Fix.
-		// TODO: Add DECRYPTION migration here.
-		decryptedSecret := strings.Replace(encryptedSecret, "encrypted:", "", 1)
+		secretClearText, err := p.decrypt(secretCipherText)
+		if err != nil {
+			return err
+		}
 
-		totpConfigs = append(totpConfigs, models.TOTPConfiguration{Username: username, Secret: decryptedSecret})
+		totpConfigs = append(totpConfigs, models.TOTPConfiguration{Username: username, Secret: secretClearText})
 	}
 
 	for _, config := range totpConfigs {

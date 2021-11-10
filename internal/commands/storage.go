@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -26,6 +27,8 @@ func NewStorageCmd() (cmd *cobra.Command) {
 
 	cmd.PersistentFlags().StringSliceP("config", "c", []string{"config.yml"}, "configuration file to load for the storage migration")
 
+	cmd.PersistentFlags().String("encryption-key", "", "the storage encryption key to use")
+
 	cmd.PersistentFlags().String("sqlite.path", "", "the SQLite database path")
 
 	cmd.PersistentFlags().String("mysql.host", "", "the MySQL hostname")
@@ -43,6 +46,7 @@ func NewStorageCmd() (cmd *cobra.Command) {
 	cmd.AddCommand(
 		newMigrateStorageCmd(),
 		newSchemaInfoStorageCmd(),
+		storageTestE(),
 	)
 
 	return cmd
@@ -52,6 +56,34 @@ func storageRunE(cmd *cobra.Command, args []string) (err error) {
 	fmt.Printf("%+v\n", config.Storage)
 
 	return nil
+}
+
+func storageTestE() (cmd *cobra.Command) {
+	cmd = &cobra.Command{
+		Use:   "test",
+		Short: "test",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			var (
+				provider storage.Provider
+			)
+
+			provider, err = getStorageProvider()
+			if err != nil {
+				return err
+			}
+
+			totp, err := provider.LoadTOTPConfiguration(context.Background(), args[0])
+			if err != nil {
+				return err
+			}
+
+			fmt.Printf("id: %d, period: %d, digits: %d, username: %s, algo: %s, secret: %s", totp.ID, totp.Period, totp.Digits, totp.Username, totp.Algorithm, string(totp.Secret))
+
+			return nil
+		},
+	}
+
+	return cmd
 }
 
 func storagePersistentPreRunE(cmd *cobra.Command, args []string) (err error) {
@@ -77,6 +109,7 @@ func storagePersistentPreRunE(cmd *cobra.Command, args []string) (err error) {
 	}
 
 	mapping := map[string]string{
+		"encryption-key":    "storage.encryption_key",
 		"sqlite.path":       "storage.local.path",
 		"mysql.host":        "storage.mysql.host",
 		"mysql.port":        "storage.mysql.port",
